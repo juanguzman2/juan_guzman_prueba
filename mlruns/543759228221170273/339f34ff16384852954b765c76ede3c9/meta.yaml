@@ -1,0 +1,15 @@
+artifact_uri: mlflow-artifacts:/543759228221170273/339f34ff16384852954b765c76ede3c9/artifacts
+end_time: 1743969364495
+entry_point_name: ''
+experiment_id: '543759228221170273'
+lifecycle_stage: active
+run_id: 339f34ff16384852954b765c76ede3c9
+run_name: RandomForestClassifier
+run_uuid: 339f34ff16384852954b765c76ede3c9
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1743968939771
+status: 3
+tags: []
+user_id: Juan Guzman

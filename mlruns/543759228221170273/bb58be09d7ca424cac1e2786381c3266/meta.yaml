@@ -1,0 +1,15 @@
+artifact_uri: mlflow-artifacts:/543759228221170273/bb58be09d7ca424cac1e2786381c3266/artifacts
+end_time: 1743968049826
+entry_point_name: ''
+experiment_id: '543759228221170273'
+lifecycle_stage: active
+run_id: bb58be09d7ca424cac1e2786381c3266
+run_name: LogisticRegression
+run_uuid: bb58be09d7ca424cac1e2786381c3266
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1743968021764
+status: 3
+tags: []
+user_id: Juan Guzman

@@ -18,7 +18,7 @@ BASE_DIR = os.getcwd()
 @app.post("/predecir")
 def predecir(
     modelo_nombre: Literal[
-        "ada_boost", "decision_tree", "kneighbors", "logistic_regression", "random_forest"
+        "RandomForestClassifier", "LogisticRegression", "KNeighborsClassifier", "DecisionTreeClassifier"
     ] = Query(..., description="Nombre del modelo a usar (.pkl sin extensión)"),
     oot_path: Optional[str] = Query(None, description="Ruta completa del archivo CSV OOT"),
     file: Optional[UploadFile] = File(None)

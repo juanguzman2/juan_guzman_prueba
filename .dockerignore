@@ -1,0 +1,6 @@
+env/
+data/train_test/
+data/procesed/
+mlrun/
+mlartifact/
+mlruns/

@@ -1,7 +1,7 @@
 import os
 import pickle
 import pandas as pd
-from data_engineer import FeatureSelector
+from src.data_engineer import FeatureSelector
 
 class Predictor:
     def __init__(self, modelo_nombre: str, base_dir: str = None):
