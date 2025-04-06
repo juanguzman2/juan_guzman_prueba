@@ -1,0 +1,55 @@
+name: CI/CD for FastAPI + Streamlit App
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test_model:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run model test
+      run: |
+        python testing/model_test.py
+
+    - name: Check accuracy threshold
+      run: |
+        accuracy=$(cat testing/accuracy.txt)
+        echo "Model accuracy: $accuracy"
+        if (( $(echo "$accuracy < 0.8" | bc -l) )); then
+          echo "❌ Accuracy menor a 0.8. Deteniendo despliegue."
+          exit 1
+        fi
+        echo "✅ Accuracy aceptable."
+  build_docker:
+    needs: test_model
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Build API container
+      run: docker build -t bancolombia-api .
+
+    - name: Build Streamlit container
+      run: docker build -f Dockerfile.streamlit -t bancolombia-streamlit .

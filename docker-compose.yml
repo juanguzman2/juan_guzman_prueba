@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bancolombia_api
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    command: ["uvicorn", "src.api:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    container_name: bancolombia_streamlit
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    command: ["streamlit", "run", "src/streamlit_app.py", "--server.port=8501"]
