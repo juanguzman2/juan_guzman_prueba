@@ -1,340 +1,277 @@
-# 🧠 Modelo de Propensión a la Aceptación de Opciones de Pago - Bancolombia
+# 🧠 Introducción y Metodología General
 
-## 📌 Descripción General
+## 🎯 Objetivo del Proyecto
 
-Este proyecto responde a un reto técnico de Bancolombia que busca anticipar si un cliente en mora aceptará una opción de pago preaprobada en el siguiente mes de gestión. Actualmente, estas decisiones se toman sin considerar la probabilidad de aceptación, lo que puede generar ineficiencias operativas y mayores costos de recuperación.
+El objetivo de esta solución es predecir si un cliente en mora aceptará una opción de pago preaprobada en el siguiente mes, representado por la variable binaria `var_rpta_alt`.
 
-El objetivo es desarrollar una solución analítica E2E capaz de predecir dicha aceptación, integrando esta probabilidad como una variable adicional dentro del sistema de priorización actual del banco.
+La métrica de evaluación es el **F1 Score** sobre una muestra fuera de tiempo (enero de 2024).
 
-## 🎯 Objetivo del Modelo
+## 🔍 Metodología General
 
-Predecir la variable binaria `var_rpta_alt`, que indica si un cliente aceptó (1) o no (0) una opción de pago preaprobada durante el siguiente mes, con base en datos históricos de comportamiento, gestión y características de la deuda.
+Se implementó una solución **End-to-End (E2E)** que incluye:
 
-El modelo será evaluado sobre una muestra fuera de tiempo (enero 2024) utilizando **F1 Score** como métrica principal.
+- Ingeniería de datos
+- Análisis exploratorio (EDA)
+- Selección de características
+- Entrenamiento y validación de modelos
+- Despliegue vía API e interfaz web
 
-## 🧩 Enfoque General
+Todo el proceso fue desarrollado bajo buenas prácticas de MLOps, y se documentó con MLflow para trazabilidad.
 
-Se construyó una solución completa que abarca:
+## 📂 Fuentes de Datos Utilizadas
 
-- Limpieza y transformación de datos
-- Ingeniería de características
-- Entrenamiento y validación de modelos de clasificación
-- Evaluación robusta con muestra out-of-time
-- Preparación de artefactos para inferencia y consumo productivo
-- Propuesta teórica de arquitectura para MLOps y despliegue
+Para evitar fuga de información, solo se usaron archivos **sin datos derivados de la aceptación de opciones de pago**. Estos fueron:
 
-Toda la solución fue desarrollada exclusivamente con los datos entregados y siguiendo criterios de buenas prácticas en ciencia de datos y aprendizaje automático.
+- `trtest`: Base principal con la variable objetivo. En donde solo se extrajeron las columnas: nit_enmascarado, num_oblig_orig_enmascarado, num_oblig_enmascarado
+- `hist_scores`: Probabilidades históricas (propensión, autocura, alerta)
+- `clientes`: Datos mensuales del cliente
+- `pagos`: Historial de pagos
 
-## Data Engineering
-
-### 🔍 Limpieza de variables 
-
-Se analizaron las variables numéricas mediante boxplots para detectar outliers, asimetrías y problemas de escala. Los principales hallazgos fueron:
-
-- Muchas variables presentan **outliers extremos** y **alta asimetría**, especialmente las relacionadas con monto (`vr_obligacion`, `saldo_capital`, `pago_total`) y mora (`dias_mora_fin`, `max_mora`).
-- Algunas variables como `porc_pago`, `cant_gestiones` y `promesas_cumplidas` tienen distribuciones sesgadas y valores atípicos frecuentes.
-- Las variables probabilísticas (`prob_propension`, `prob_auto_cura`, etc.) están bien escaladas, pero se evaluará su uso para evitar **data leakage**.
-
-### 🛠 Transformaciones aplicadas
-
-Para mitigar estos problemas, se aplicó una función de tratamiento automático de variables numéricas que incluye:
-
-- **Imputación de nulos** con la mediana.
-- **Transformación logarítmica (`log1p`)** para variables con alta asimetría.
-- **Winsorización al 1% y 99%** para reducir el impacto de valores extremos.
-
-Estas transformaciones permiten estabilizar la varianza y mejorar la robustez del modelo frente a datos atípicos.
-
-El proceso completo de limpieza y transformación está implementado en la clase [`FeatureSelector`](src\data_engineer.py), que automatiza el tratamiento numérico, escalamiento, codificación categórica y reconstrucción del dataset final con las variables seleccionadas.
-
-## 📊 Análisis exploratorio (EDA)
-
-Durante el EDA se exploró la variable objetivo y su relación con varias variables categóricas. Se utilizó la prueba de **Chi-cuadrado** para evaluar si existía una asociación significativa entre estas variables y la variable objetivo `var_rpta_alt`.
-
-### 🧪 ¿Qué es la prueba de Chi-cuadrado?
-
-La prueba de **Chi-cuadrado de independencia** permite evaluar si dos variables categóricas están asociadas. En este caso, se analiza si la distribución de una variable categórica cambia significativamente entre las clases 0 y 1 de la variable objetivo. Un **p-valor < 0.05** indica que existe una asociación estadísticamente significativa.
+Se filtró la última fecha por cliente (`fecha_corte`) [por almacenamiento y capacidades de computo] y se integraron usando `nit_enmascarado` como llave. El conjunto final se utilizó tanto para entrenamiento como inferencia.
 
 ---
 
-### 🎯 Variable objetivo (`var_rpta_alt`)
-- **Distribución**: La variable objetivo está **relativamente balanceada**.
+# 🛠️ Ingeniería de Datos
+
+Se construyó una clase personalizada llamada [`FeatureSelector`](src\data_engineer.py), que automatiza el tratamiento y preparación de datos previo al modelado y para la inferencia. Este pipeline permite estandarizar el flujo tanto en entrenamiento como en inferencia.
+
+### 🔄 Principales transformaciones aplicadas
+
+- **Imputación automática**:
+  - Nulos numéricos: mediana.
+  - Nulos categóricos: valor más frecuente.
+
+- **Transformación de variables numéricas**:
+  - `log1p` en variables con alta asimetría.
+  - Winsorización entre percentiles 1% y 99% para reducir outliers extremos.
+
+- **Escalamiento y codificación**:
+  - Numéricas: `StandardScaler`.
+  - Categóricas (baja cardinalidad): `OneHotEncoding` con `drop='first'`.
+
+- **Reconstrucción final del dataset**:
+  - Uso de `features.csv` para alinear columnas con las seleccionadas por Lasso.
+  - Añade ceros en columnas faltantes para evitar errores en inferencia.
+  - Devuelve un DataFrame con `id`, `var_rpta_alt` y variables preprocesadas.
+
+Este proceso asegura que todos los datos pasen por un tratamiento uniforme, evitando fugas, problemas de escala o inconsistencias entre entrenamiento y despliegue.
+
+# 📊 Análisis Exploratorio de Datos (EDA)
+
+Durante esta etapa se analizaron las relaciones entre la variable objetivo `var_rpta_alt` y distintas variables categóricas y numéricas. Se aplicaron pruebas de **Chi-cuadrado** para evaluar dependencia entre variables categóricas y se usaron gráficos para visualizar patrones en las variables numéricas.
+
+---
+
+## 🎯 Variable Objetivo
+
+- `var_rpta_alt` está **relativamente balanceada**:
   - Clase 0: 53.2%
   - Clase 1: 46.8%
-- Esto facilita el entrenamiento de modelos sin requerir técnicas avanzadas de balanceo.
 
-![Texto alternativo](./images/v_objetivo.png)
+Esto permite un modelado robusto sin necesidad de técnicas complejas de balanceo.
 
----
-
-### 🔹 `banca`
-- **Cardinalidad**: 3 categorías.
-- **Resultado del test Chi²**: p-valor = 0.0000 → **asociación significativa**.
-- **Interpretación**:
-  - La aceptación de opciones de pago varía según el tipo de banca.
-  - "Banca Personas" domina en volumen, pero "Independientes" y "Pyme" tienen patrones diferentes por clase.
-
-![Texto alternativo](./images/distri_banca_clase.png)
+![Distribución objetivo](./images/v_objetivo.png)
 
 ---
 
-### 🔹 `rango_mora`
-- **Cardinalidad**: 2 rangos: `1-30` y `31-90` días.
-- **Resultado del test Chi²**: p-valor = 0.0003 → **asociación significativa**.
-- **Interpretación**:
-  - Los clientes con menos días en mora (`1-30`) tienen mayor proporción de aceptación de opciones de pago.
+## 🔎 Variables Categóricas Relevantes
 
-![Texto alternativo](./images/distri_rango_mora.png)
+Se aplicó la **prueba Chi²** para identificar asociación significativa con la variable objetivo (`p < 0.05`).
 
----
+- **`banca`**  
+  Diferencias marcadas entre “Personas”, “Independientes” y “Pyme”.  
+  ![banca](./images/distri_banca_clase.png)
 
-### 🔹 `alternativa_aplicada_agr`
-- **Cardinalidad**: 7 categorías.
-- **Resultado del test Chi²**: p-valor = 0.0000 → **asociación significativa**.
-- **Interpretación**:
-  - Las alternativas aplicadas previamente tienen fuerte influencia sobre la aceptación actual.
-  - Destaca `SIN_INFO` con mayor proporción de clase 0.
+- **`rango_mora`**  
+  Clientes con mora de `1-30 días` tienen mayor aceptación.  
+  ![rango mora](./images/distri_rango_mora.png)
 
-![Texto alternativo](./images/distri_alter_apli.png)
+- **`alternativa_aplicada_agr`**  
+  Influye fuertemente; destaca `SIN_INFO` con alta clase 0.  
+  ![alternativa aplicada](./images/distri_alter_apli.png)
 
----
+- **`cant_promesas_cumplidas_binario`**  
+  Más aceptación en quienes ya cumplieron promesas.  
+  ![promesas cumplidas](./images/cant_prome_cumpl.png)
 
-### 🔹 `cant_promesas_cumplidas_binario`
-- **Cardinalidad**: binaria.
-- **Resultado del test Chi²**: p-valor = 0.0000 → **asociación significativa**.
-- **Interpretación**:
-  - Los clientes que **han cumplido promesas de pago** anteriormente son más propensos a aceptar nuevas opciones.
+- **`cant_gestiones_binario`**  
+  Mayor aceptación con al menos una gestión previa.  
+  ![gestiones](./images/cant_gestiones.png)
 
-![Texto alternativo](./images/cant_prome_cumpl.png)
+- **`segmento`**  
+  Patrones distintos según segmento; “Personal” domina en volumen.  
+  ![segmento](./images/segmento.png)
 
----
-
-### 🔹 `cant_gestiones_binario`
-- **Cardinalidad**: binaria.
-- **Resultado del test Chi²**: p-valor = 0.0000 → **asociación significativa**.
-- **Interpretación**:
-  - Las obligaciones con al menos una gestión previa tienen una mayor proporción de aceptación.
-
-![Texto alternativo](./images/cant_gestiones.png)
+- **`marca_alternativa`**  
+  Alta aceptación cuando el cliente ya ha aceptado antes  
+  ⚠️ **Posible data leakage**  
+  ![marca alternativa](./images/marca_alter.png)
 
 ---
 
-### 🔹 `segmento`
-- **Cardinalidad**: 6 categorías.
-- **Resultado del test Chi²**: p-valor = 0.0000 → **asociación significativa**.
-- **Interpretación**:
-  - Hay diferencias claras entre segmentos. El segmento "Personal" agrupa la mayoría de los datos, pero los patrones de aceptación varían por segmento.
+## 📈 Variables Numéricas Relevantes
 
-![Texto alternativo](./images/segmento.png)
+- **`porc_pago_mes`**  
+  A mayor proporción pagada, mayor aceptación.  
+  ![porc pago mes](./images/porc_pago_mes.png)
 
----
+- **`rpc` (realizó pago completo)**  
+  Fuerte predictor positivo  
+  ⚠️ Evaluar posible fuga de información  
+  ![rpc](./images/rpc.png)
 
-### 🔹 `marca_alternativa`
-- **Cardinalidad**: 3 categorías.
-- **Resultado del test Chi²**: p-valor = 0.0000 → **asociación significativa**.
-- **Interpretación**:
-  - Los clientes con marca "Acepta Alternativa" tienen muy alta probabilidad de aceptar la opción en el mes siguiente.
-  - Podría implicar **fuga de información** si esta variable es generada con posterioridad.
+- **`endeudamiento`**  
+  Menor endeudamiento → mayor propensión a aceptar.  
+  ![endeudamiento](./images/endeudamiento.png)
 
-![Texto alternativo](./images/marca_alter.png)
-
----
-
-## 📈 Relación entre variables numéricas y la variable objetivo
-
-Se utilizaron gráficos de dispersión con **jitter** para explorar cómo se comportan ciertas variables numéricas clave frente a la variable objetivo `var_rpta_alt`.
+- **`dias_mora_fin`**  
+  Menos días en mora → mayor aceptación (comportamiento esperado).  
+  ![dias mora fin](./images/dias_mora_fin.png)
 
 ---
 
-### 🔹 `porc_pago_mes`
-- **Descripción**: Representa el porcentaje de la cuota mensual que el cliente alcanzó a pagar.
-- **Hallazgos**:
-  - Se observa una clara concentración de aceptación (`var_rpta_alt = 1`) en clientes con valores cercanos a 1.
-  - Aquellos que pagaron más proporcionalmente tienden a aceptar las opciones de pago.
-  - Esta variable podría tener una **relación positiva** con la probabilidad de aceptación.
+## 🔗 Análisis Multivariado
 
-![Texto alternativo](./images/porc_pago_mes.png)
+Se calculó la matriz de correlación de Pearson para detectar:
 
----
+- **Alta colinealidad** entre variables similares:
+  - Ej: `valor_cuota_mes` ≈ `valor_cuota_mes_pago`
+  - Ej: `saldo_capital` ≈ `vr_obligacion`
+- **Relaciones negativas destacadas**:
+  - `max_mora` ↔ `prob_propension` (r ≈ -0.83)
 
-### 🔹 `rpc` (¿realizó pago completo?)
-- **Descripción**: Variable binaria (0 o 1) que indica si el cliente pagó completamente.
-- **Hallazgos**:
-  - La clase 1 de `rpc` (sí pagó completamente) se asocia fuertemente con aceptación (`var_rpta_alt = 1`).
-  - Es un **predictor fuerte y directo**, aunque se debe evaluar su generación para evitar **data leakage**.
+Estas correlaciones guiaron la eliminación de variables redundantes en la selección de características.
 
-![Texto alternativo](./images/rpc.png)
+![correlaciones](./images/corr_matriz.png)
 
 ---
 
-### 🔹 `endeudamiento`
-- **Descripción**: Representa el total de obligaciones financieras del cliente.
-- **Hallazgos**:
-  - La mayoría de los clientes aceptan opciones cuando el endeudamiento es **relativamente bajo (< 0.4e9)**.
-  - A medida que el endeudamiento aumenta, la proporción de aceptación disminuye.
-  - Posible **relación no lineal** con la respuesta.
+> ✅ Este análisis permitió identificar las variables más informativas y detectar posibles riesgos de **fuga de información**, asegurando un set de variables confiables para el modelado.
 
-![Texto alternativo](./images/endeudamiento.png)
+
+# 🧪 Selección de Características
+
+El objetivo de esta etapa fue reducir la dimensionalidad y quedarnos únicamente con las variables más informativas, minimizando redundancia y riesgo de sobreajuste.
 
 ---
 
-### 🔹 `dias_mora_fin`
-- **Descripción**: Días que lleva el cliente en mora al final del mes observado.
-- **Hallazgos**:
-  - Clientes con menos días de mora muestran mayor probabilidad de aceptar opciones.
-  - A medida que se acumulan más días, la aceptación disminuye notablemente.
-  - Comportamiento esperado: los deudas recientes son más rescatables.
+## 1️⃣ Preprocesamiento y Codificación
 
-![Texto alternativo](./images/dias_mora_fin.png)
+- Se identificaron variables numéricas y categóricas de baja cardinalidad (≤ 30 categorías).
+- Se aplicaron pipelines de transformación con:
+  - **Imputación** (`mean` para numéricas, `most_frequent` para categóricas)
+  - **Estandarización** (`StandardScaler`)
+  - **Codificación** (`OneHotEncoder` con `drop='first'`)
 
-## 🔗 Análisis multivariado
+🔹 X shape: (55780, 52)
 
-Se realizó una matriz de correlación de Pearson para identificar relaciones lineales entre variables numéricas, lo que permite detectar:
-
-- Variables altamente correlacionadas (redundantes).
-- Potenciales candidatos para reducción de dimensionalidad o eliminación por colinealidad.
+🔹 X_preprocessed shape: (55780, 145)
 
 ---
 
-### 🧮 Hallazgos clave
+## 2️⃣ Eliminación de Colinealidad
+- Se calculó la matriz de correlación absoluta.
+- Se eliminaron variables con correlación > 0.90 respecto a otras.
+- Variables eliminadas: 14
 
-#### ✅ Alta correlación positiva (r > 0.85)
-- `valor_cuota_mes` ↔ `valor_cuota_mes_pago` (r ≈ 1.00)
-- `var_rpta_alt` ↔ `var_rpta_alt_jitter` (r ≈ 0.99) → duplicada por diseño.
-- `saldo_capital` ↔ `vr_obligacion` (r ≈ 0.99)
-- `cant_promesas_cumplidas_binario` ↔ `promesas_cumplidas` (r ≈ 0.91)
-- `fecha_pago_maxima` ↔ `fecha_pago_minima` (r ≈ 0.90)
-- `valor_cuota_mes_pago` ↔ `vr_vencido` (r ≈ 0.87)
-- `pago_total_log` ↔ `porc_pago_cuota` (r ≈ 0.87)
-- `saldo_capital_log` ↔ `vr_obligacion_log` (r ≈ 0.86)
-- `cant_acuerdo` ↔ `cant_acuerdo_binario` (r ≈ 0.77)
-- `dias_mora_fin` ↔ `max_mora` (r ≈ 0.77)
+ 📌 Variables eliminadas por colinealidad: 14
 
-Estas variables presentan **alta redundancia**. En la etapa de selección de características se considerará:
-- Eliminar una de las variables correlacionadas.
-- Agrupar o transformar (e.g. PCA si fuera necesario, aunque no es lo ideal aquí por interpretabilidad).
-
-#### 🚨 Correlaciones negativas destacadas
-- `min_mora` ↔ `prob_propension` (r ≈ -0.81)
-- `max_mora` ↔ `prob_propension` (r ≈ -0.83)
-- `num_oblig_enmascarado` ↔ `num_oblig_orig_enmascarado` (r ≈ -0.99)
-
-Estas correlaciones indican relaciones inversas que podrían tener **valor predictivo**, especialmente en el caso de mora vs. propensión de pago.
-
-![Texto alternativo](./images/corr_matriz.png)
-
-## 🧪 Feature Selection
-
-Para optimizar el conjunto de variables y mejorar la capacidad predictiva del modelo, se implementó un proceso sistemático de selección de características que abarcó las siguientes etapas:
+✅ Shape después de quitar colinealidad: (55780, 131)
 
 ---
 
-### 🔹 1. Carga y limpieza de datos
+## 3️⃣ Selección con Lasso (L1)
+- Se entrenó un modelo LogisticRegression con penalización L1.
 
-Se cargó el dataset final (`df_master_clean.csv`) y se alineó con la base de entrenamiento (`prueba_op_base_pivot_var_rpta_alt_enmascarado_trtest.csv`), manteniendo solo las columnas comunes y excluyendo variables no informativas como `tipo_var_rpta_alt`.
+- Se conservaron únicamente las variables con coeficientes distintos de cero.
 
----
+- Variables seleccionadas: 113 de 131
 
-### 🔹 2. Preprocesamiento
-
-Se utilizó un `ColumnTransformer` para aplicar:
-
-- `StandardScaler` a variables numéricas.
-- `OneHotEncoder` (con `drop='first'`) a variables categóricas.
-
-Esto generó un total de **218 variables transformadas** listas para modelado.
+✅ Variables seleccionadas por Lasso: 113 de 131
 
 ---
 
-### 🔹 3. Eliminación de colinealidad
+## 📊 Ranking de Importancia
+Se ordenaron los coeficientes absolutos del modelo Lasso, y se graficaron las Top 20 variables más relevantes.
 
-Se calculó la matriz de correlación absoluta y se eliminaron variables con **correlación mayor a 0.90** respecto a otras variables.  
-Esto redujo el espacio de variables de **218 a 149 columnas**, mitigando redundancia y riesgo de sobreajuste.
+Estas variables reflejan fuerte influencia sobre la predicción de aceptación (var_rpta_alt).
 
----
 
-### 🔹 4. Selección de variables con Lasso
+✅ Las variables seleccionadas fueron exportadas a [`features.csv`](./data/procesed/features.csv) para ser reutilizadas en la etapa de entrenamiento e inferencia.
 
-Se entrenó un modelo de regresión logística con penalización L1 (`Lasso`) para seleccionar únicamente las variables con coeficientes distintos de cero.  
-Este método actúa como filtro automático, priorizando las variables más relevantes.
+![Top variables seleccionadas por Lasso](./images/features.png)
 
-- Total variables seleccionadas: **44 de 149**.
-- El modelo identifica las variables más relevantes de forma robusta al ruido y a la multicolinealidad.
+### Interpretación de las Top 5 variables (Lasso)
+1. **subsegm_PREF_CONCILIACION**: Clientes de este subsegmento tienen baja probabilidad de aceptación.
 
-> 📊 A continuación se visualizan las **Top 20 variables seleccionadas por Lasso**, ordenadas por la magnitud del coeficiente:
+2. **producto_SOBREGIRO**: Obligaciones tipo sobregiro se asocian con no aceptación.
 
-![Top variables seleccionadas por Lasso](./images/variables_selec.png)
+3. **producto_LIBRANZA**: Las libranzas presentan menor disposición a aceptar alternativas.
 
----
+4. **marca_pago_NO_PAGO**: Historial de no pago reduce fuertemente la propensión.
 
-### ✅ 5. Exportación final
-
-Se generó el archivo final `df_procesed.csv` con las siguientes columnas:
-- `id` (identificador único)
-- `var_rpta_alt` (variable objetivo)
-- Las **44 variables seleccionadas por Lasso**
-
-También se exportó el listado de variables seleccionadas a [`features.csv`](./data/procesed/features.csv) para su posterior uso en inferencia o despliegue.
-
----
-
-Este proceso asegura un conjunto de variables más compacto, relevante y con menor riesgo de overfitting, listo para ser usado en el pipeline de entrenamiento y producción del modelo.
+5. **ctrl_terc_EXCLIENTE**: Exclientes tienen baja probabilidad de aceptar opciones de pago.
 
 
 ## 🤖 Selección de Modelo (Model Selection)
-
 Se evaluaron múltiples algoritmos de clasificación para predecir la variable binaria `var_rpta_alt` (acepta o no una opción de pago). El objetivo fue encontrar el modelo con mejor desempeño, validado tanto por métricas estándar como por estabilidad en validación cruzada.
 
----
+## 🧪 Modelos evaluados
+Se compararon cuatro modelos clásicos de clasificación utilizando un split 60/40 y validación cruzada (cv=5):
 
-### 🧪 Modelos evaluados
+- LogisticRegression
+- KNeighborsClassifier
+- DecisionTreeClassifier
+- RandomForestClassifier
 
-Se compararon cuatro modelos clásicos de clasificación utilizando un split 60/40 y validación cruzada (`cv=5`):
+El proceso se automatizó e integró con MLflow, permitiendo trazabilidad completa de cada experimento: parámetros, métricas y artefactos del modelo.
 
-- `LogisticRegression`
-- `KNeighborsClassifier`
-- `DecisionTreeClassifier`
-- `RandomForestClassifier`
+## ⚙️ Pipeline de evaluación
+- Transformación del dataset usando la clase `FeatureSelector`.
+- Separación en conjuntos de entrenamiento (60%) y prueba (40%).
+- Entrenamiento + validación cruzada para cada modelo.
+- Cálculo de métricas: F1 Score, Precision, Recall, Matriz de Confusión, y Classification Report.
+- Registro de resultados en MLflow.
 
-El proceso se automatizó e integró con **MLflow**, permitiendo trazabilidad completa de cada experimento: parámetros, métricas y artefactos del modelo.
+## 📊 Resultados
 
----
+| Modelo                 | F1 Score (test) | Precision | Recall  | F1 CV Mean ± Std |
+|------------------------|-----------------|-----------|---------|------------------|
+| Logistic Regression     | 0.5816          | 0.7297    | 0.7297  | 0.5799 ± 0.0062  |
+| K-Nearest Neighbors     | 0.5306          | 0.6976    | 0.6976  | 0.5228 ± 0.0054  |
+| Decision Tree           | 0.5482          | 0.6874    | 0.6874  | 0.5488 ± 0.0058  |
+| Random Forest           | 0.6193          | 0.7610    | 0.7610  | 0.6116 ± 0.0101  |
 
-### ⚙️ Pipeline de evaluación
+✅ El mejor modelo fue **Random Forest**, con un F1 score de 0.6193, superando a los demás en todas las métricas clave.
 
-1. **Transformación del dataset** usando la clase `FeatureSelector`.
-2. **Separación** en conjuntos de entrenamiento (60%) y prueba (40%).
-3. Entrenamiento + validación cruzada para cada modelo.
-4. Cálculo de métricas: `F1 Score`, `Precision`, `Recall`, `Matriz de Confusión`, y `Classification Report`.
-5. Registro de resultados en MLflow.
+## 🛠️ Ajuste de Hiperparámetros
+Se realizó una búsqueda exhaustiva con GridSearchCV sobre los siguientes hiperparámetros del modelo Random Forest:
 
----
+- `n_estimators`: [100, 200]
+- `max_depth`: [5, 10]
+- `min_samples_split`: [2, 5]
+- `min_samples_leaf`: [1, 2, 5]
+- `max_features`: ['sqrt', 'log2']
 
-### 📊 Resultados
+Se evaluaron 72 combinaciones, utilizando validación cruzada con `scoring='f1'`.
 
-| Modelo                  | F1 Score (test) | Precision | Recall | F1 CV Mean ± Std |
-|------------------------|----------------|-----------|--------|------------------|
-| Logistic Regression     | 0.9864         | 0.9870    | 0.9870 | 0.9867 ± 0.0005   |
-| K-Nearest Neighbors     | 0.9828         | 0.9836    | 0.9836 | 0.9818 ± 0.0004   |
-| Decision Tree           | 0.9906         | 0.9910    | 0.9910 | 0.9900 ± 0.0004   |
-| **Random Forest**       | **0.9946**     | **0.9949**| **0.9949** | **0.9947 ± 0.0004** |
+### ✅ Mejor configuración encontrada
+- `max_depth`: 10  
+- `max_features`: 'sqrt'  
+- `min_samples_leaf`: 2  
+- `min_samples_split`: 2  
+- `n_estimators`: 200  
 
-> ✅ El mejor modelo fue **Random Forest**, con un F1 score de 0.9946 y métricas muy cercanas al óptimo, además de estabilidad en validación cruzada.
+## 📈 Métricas del mejor modelo (RandomForest + Hyperparameter Optimization (HPO))
 
----
-
-### 📌 Métricas explicadas
-
-- **F1 Score**: Métrica armónica entre precisión y recall. Ideal para casos con clases balanceadas (como este).
-- **Precision**: Proporción de predicciones positivas correctas.
-- **Recall**: Proporción de verdaderos positivos detectados correctamente.
-- **Validation Score (CV)**: Promedio del F1-score en 5 particiones del conjunto de entrenamiento. Evalúa la **estabilidad** del modelo.
-
----
+| Métrica     | Valor  |
+|-------------|--------|
+| F1 Score    | 0.5835 |
+| Precision   | 0.7116 |
+| Recall      | 0.4944 |
+| Accuracy    | 0.76   |
 
 
-Todos los modelos lograron resultados sobresalientes debido a la calidad del preprocesamiento y la riqueza de variables seleccionadas.  
-**RandomForestClassifier** fue el modelo seleccionado para la etapa de inferencia y producción por su excelente desempeño y robustez.
 
 > 📁 Todos los modelos, métricas y artefactos fueron registrados y gestionados mediante **MLflow**, lo que facilita su trazabilidad y posterior despliegue.
 
@@ -342,87 +279,180 @@ Todos los modelos lograron resultados sobresalientes debido a la calidad del pre
 
 El modelo entrenado fue empaquetado y desplegado usando una arquitectura sencilla pero efectiva que permite su **consumo vía API REST** y a través de una **interfaz web interactiva con Streamlit**.
 
----
 
-### 🧱 Arquitectura de Inferencia
+## 🧠 API de Predicción (FastAPI)
 
-El flujo de inferencia se compone de los siguientes componentes:
+Se construyó una API en **FastAPI** que permite generar predicciones cargando un archivo `.csv` o especificando una ruta local. La API expone el siguiente endpoint:
 
-1. **FastAPI**  
-   Sirve como backend que expone un endpoint `/predecir`, el cual:
-   - Acepta archivos `.csv` o una ruta local (`oot_path`)
-   - Permite seleccionar el modelo a usar (`RandomForestClassifier`, `LogisticRegression`, etc.)
-   - Retorna el archivo `submission.csv` con las predicciones generadas.
+### POST `/predecir`
 
-2. **Predictor**  
-   Clase que encapsula la lógica de carga de modelos, preprocesamiento y predicción. Este componente se encarga de:
-   - Cargar el modelo serializado (`.pkl`)
-   - Aplicar el pipeline de transformación
-   - Generar predicciones y guardar el archivo de salida.
+Permite:
 
-3. **Streamlit App**  
-   Interfaz web simple que permite:
-   - Subir un archivo OOT `.csv`
-   - Seleccionar el modelo deseado
-   - Descargar el resultado con las predicciones
+- Seleccionar el modelo deseado (por nombre).
+- Cargar un archivo OOT directamente o especificar la ruta en disco.
+- Retornar automáticamente un archivo `submission.csv` con los resultados.
+
+La lógica está encapsulada en una clase `Predictor`, que recibe el modelo, ejecuta el preprocesamiento y guarda el archivo listo para subir como sumisión.
 
 ---
 
-### 🛠 FastAPI – Backend de Predicción
+## 🖥️ Interfaz de Usuario (Streamlit)
 
-- **Endpoint**: `POST /predecir`
-- **Parámetros**:
-  - `modelo_nombre`: Nombre del modelo a usar (ej. `"RandomForestClassifier"`)
-  - `oot_path` (opcional): Ruta local del archivo `.csv`
-  - `file` (opcional): Archivo `.csv` subido por el usuario
+Se creó una interfaz web con **Streamlit** que permite:
 
-El backend retorna directamente el archivo `submission.csv` con las columnas:
-- `ID`: Identificador único del cliente-obligación
-- `var_rpta_alt`: Predicción (0 o 1)
-- `Prob_uno`: Probabilidad estimada de clase 1
+- Subir un archivo `.csv`.
+- Seleccionar el modelo entrenado.
+- Enviar la solicitud a la API.
+- Descargar el archivo con los resultados.
+
+Esto permite que cualquier persona del negocio o del equipo de riesgo pueda generar predicciones sin necesidad de conocimientos técnicos.
 
 ---
 
-### 🌐 Streamlit – Interfaz web
+## 🐳 Contenerización con Docker
 
-La interfaz fue desarrollada en Streamlit y permite:
+Para facilitar la ejecución del sistema completo en cualquier entorno, se construyeron dos imágenes Docker:
 
-- Elegir el modelo de inferencia
-- Subir un archivo `.csv`
-- Enviar la solicitud al backend FastAPI
-- Descargar el resultado (`submission.csv`) de forma directa
+### API (FastAPI): definida en `Dockerfile`
 
-Esto facilita la interacción para usuarios de negocio o testers sin conocimientos técnicos.
+- Expone el puerto `8000`.
+- Ejecuta la API con `uvicorn`.
 
+### App (Streamlit): definida en `dockerfile.streamlit`
 
-## 📦 Despliegue con Docker
+- Expone el puerto `8501`.
+- Permite levantar la interfaz gráfica vía navegador.
 
-Para facilitar el uso, replicabilidad y portabilidad del sistema, tanto la API de predicción como la interfaz en Streamlit fueron **empaquetadas con Docker** y orquestadas mediante **Docker Compose**.
+Ambos servicios se pueden orquestar fácilmente usando `docker-compose`, facilitando el despliegue local o en servidores remotos.
 
----
+# ▶️ Ejecución Local
 
-### 🧱 Arquitectura Docker
-
-Se definieron dos servicios principales:
-
-| Servicio     | Puerto | Rol                                |
-|--------------|--------|-------------------------------------|
-| `api`        | 8000   | Backend FastAPI para predicciones   |
-| `streamlit`  | 8501   | Interfaz web para carga y consulta  |
-
-Ambos servicios comparten el mismo código fuente (`src/`), datos y modelos, y se levantan en contenedores aislados pero interconectados.
+A continuación se describen los pasos para levantar el sistema de predicción de forma local, sin usar Docker.
 
 ---
 
-### 📂 Archivos clave
+### 🔹 1️⃣ Levantar sin Docker
 
-#### 🔹 `Dockerfile`
-Define la imagen base de Python, copia del código, instalación de dependencias y exposición del backend FastAPI.
+1. **Clonar el repositorio**:
 
-#### 🔹 `Dockerfile.streamlit`
-Imagen ligera basada en Python Slim, configurada para lanzar la aplicación de Streamlit desde `src/streamlit_app.py`.
+*git clone https://github.com/juanguzman2/prueba_tecnica_MELI.git*
 
-#### 🔹 `docker-compose.yaml`
-Orquesta ambos contenedores (`api` y `streamlit`), montando el proyecto en `/app`, exponiendo puertos y lanzando los comandos correspondientes.
+2. **Crear un entorno virtual y activar**:
+
+Cerciorarse de que se está en la carpeta base:
+
+- *cd juan_guzman_prueba*
+
+Crear el entorno virtual:
+
+- *python -m venv env*
+
+Activar el entorno virtual:
+
+- *.\env\Scripts\activate*   (En Windows)
+
+3. **Instalar dependencias**
+
+*pip install -r requirements.txt*
+
+4. **Ejecutar la API con FastAPI**
+
+*uvicorn src.api:app --host 127.0.0.1 --port 8000 --reload*
+
+5. **Ejecutar la interfaz en Streamlit**
+
+Abrir otra terminal y asegurarse de estar en la carpeta principal:
+
+- *cd juan_guzman_prueba*
+
+Activar el entorno virtual:
+
+- *.\env\Scripts\activate*   (En Windows)
+
+Levantar la app:
+
+- *streamlit run webapp/app.py*
+
+---
+
+* Acceder a la API: http://localhost:8000/
+* Acceder a la documentación de la API: http://localhost:8000/docs
+* Acceder a la interfaz gráfica (Streamlit): http://localhost:8501/
+
+# ✅ Conclusiones Generales del Proyecto
+
+1. Se desarrolló una solución analítica E2E robusta para predecir la aceptación de opciones de pago por parte de clientes en mora, alineada con las necesidades estratégicas de Bancolombia.
+
+2. El modelo final, basado en Random Forest y ajustado con GridSearchCV, obtuvo métricas sólidas (F1: 0.58, Precision: 0.71) sobre un conjunto de prueba realista (OOT enero 2024), y fue registrado con trazabilidad completa en MLflow.
+
+3. Se aplicaron buenas prácticas de ingeniería de datos, como imputación, codificación, escalamiento, eliminación de colinealidad y selección con Lasso, resultando en un conjunto de 113 variables relevantes.
+
+4. La solución es modular y productizable, con:
+
+  *  API REST en FastAPI para consumo automatizado.
+
+  *  Interfaz Streamlit para usuarios del negocio.
+
+  * Contenerización completa con Docker.
+
+5. El modelo es interpretativo y arroja insights valiosos sobre segmentos, productos y comportamientos que influyen en la propensión a aceptar opciones de pago, facilitando decisiones tácticas de cobranza.
+
+6. El diseño permite escalar hacia arquitecturas más complejas de MLOps, incluyendo monitoreo, versionado de modelos y automatización del retraining.
+
+7. `Se recomienda que, bajo la arquitectura actual de Bancolombia, todo el almacenamiento de datos se realice a través de la Landing Zone (LZ), asegurando gobernabilidad, trazabilidad y cumplimiento con los lineamientos institucionales de datos.`
+
+8. `Para el control de versiones y gestión colaborativa del código y modelos, se sugiere utilizar repositorios en Azure DevOps, lo que permite auditar cambios, integrar flujos CI/CD y escalar la solución dentro de prácticas de MLOps.`
 
 
+# Propuesta Funcional: Interfaz Conversacional para el Proyecto de Predicción de Aceptación de Opciones de Pago – Bancolombia
+
+## 🧠 Objetivo de la Interfaz Conversacional
+
+Permitir que usuarios no técnicos interactúen de forma natural con el sistema analítico, accediendo a insights del modelo de predicción y la información histórica del cliente, sin necesidad de escribir consultas complejas o manejar bases de datos directamente.
+
+---
+
+## 🔍 ¿Qué permitiría hacer esta interfaz?
+
+### 1. Consultar Predicciones Individuales
+**Ejemplo:**  
+> “¿Qué probabilidad tiene Juan Pérez de aceptar una opción de pago este mes?”
+
+**Funcionalidad:**  
+La interfaz devuelve la probabilidad calculada por el modelo, el score, y las variables más influyentes en su predicción (explainability).
+
+---
+
+### 2. Explorar Segmentos de Clientes
+**Ejemplo:**  
+> “Muéstrame los clientes con alta probabilidad de aceptar el plan de pago pero que aún no han sido contactados.”
+
+**Funcionalidad:**  
+Devuelve un segmento filtrado dinámicamente con insights accionables.
+
+---
+
+### 3. Revisar la Historia del Cliente
+**Ejemplo:**  
+> “¿Qué pagos ha hecho el cliente 12345 en los últimos 6 meses?”
+
+**Funcionalidad:**  
+Consulta cruzada con los datos de pagos históricos, cuotas, comportamiento.
+
+---
+
+### 4. Simular Escenarios
+**Ejemplo:**  
+> “¿Qué pasaría si al cliente X se le ofrece una opción con menor cuota?”
+
+**Funcionalidad:**  
+Permite simular el cambio de algunas variables y obtener una nueva predicción (tipo “what-if”).
+
+
+## 💡 Casos de uso específicos en contexto Bancolombia
+
+- **Gestores de cobranza**: pueden consultar el perfil de un cliente y recibir recomendaciones sobre cómo abordarlo según la probabilidad de aceptación y su historial.
+- **Área de inteligencia comercial**: puede explorar segmentos de clientes para definir campañas proactivas.
+- **Analistas de riesgo**: pueden evaluar el impacto de nuevas variables.
+
+---
