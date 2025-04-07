@@ -1,5 +1,5 @@
 env/
 data/
 models/
-mlrun/
+mlruns/
 mlartifacts/

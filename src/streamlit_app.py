@@ -10,7 +10,7 @@ st.markdown("Sube un archivo OOT (.csv), selecciona un modelo y descarga el resu
 
 # Selección del modelo
 modelo = st.selectbox("📌 Selecciona el modelo a usar", [
-        "RandomForestClassifier", "LogisticRegression", "KNeighborsClassifier", "DecisionTreeClassifier"])
+        "Best_Model_RF","RandomForestClassifier", "LogisticRegression", "KNeighborsClassifier", "DecisionTreeClassifier"])
 
 # Upload del archivo OOT
 archivo = st.file_uploader("📄 Carga tu archivo CSV para predicción", type="csv")

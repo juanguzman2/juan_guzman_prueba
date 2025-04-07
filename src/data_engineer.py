@@ -3,14 +3,16 @@ import numpy as np
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 
 
 class FeatureSelector:
-    def __init__(self, df, features_csv, correlation_threshold=0.9, drop_first=True):
+    def __init__(self, df, features_csv, correlation_threshold=0.9, drop_first=True, max_cardinality=30):
         self.df = df.copy()
         self.features_csv = list(features_csv.iloc[:, 0])
         self.correlation_threshold = correlation_threshold
         self.drop_first = drop_first
+        self.max_cardinality = max_cardinality
 
         if "id" not in self.df.columns:
             required_cols = ['nit_enmascarado', 'num_oblig_orig_enmascarado', 'num_oblig_enmascarado']
@@ -22,7 +24,6 @@ class FeatureSelector:
             self.df["id"] = self.df["nit_enmascarado"].astype(str) + "#" + \
                             self.df["num_oblig_orig_enmascarado"].astype(str) + "#" + \
                             self.df["num_oblig_enmascarado"].astype(str)
-
 
         self.preprocessor = None
         self.selected_features = None
@@ -56,48 +57,53 @@ class FeatureSelector:
     def fit_transform(self, verbose=False):
         df = self.df.copy()
         
-        assert 'var_rpta_alt' in df.columns and 'id' in df.columns, \
-            "El DataFrame debe contener las columnas 'id' y 'var_rpta_alt'."
+        if 'id' not in df.columns:
+            raise ValueError("La columna 'id' es requerida en el DataFrame.")
+
+        tiene_y = 'var_rpta_alt' in df.columns
 
         print("Limpiando variables numéricas...")
+        df_clean = self._tratamiento_numericas_basico_auto(verbose=verbose)
 
+        if tiene_y:
+            print("Separando X e y...")
+            X = df_clean.drop(columns=['var_rpta_alt', 'id'])
+            y = df_clean['var_rpta_alt']
 
-        # 1. Limpiar variables numéricas automáticamente
-        df_clean = self._tratamiento_numericas_basico_auto()
-
-        # print ára chequear en que etapa va
-        print("Separando X e y...")
-
-        # 2. Separar X e y
-        X = df_clean.drop(columns=['var_rpta_alt', 'id'])
-        y = df_clean['var_rpta_alt']
+            # Eliminar filas con NaN en y
+            valid_idx = y.notna()
+            X = X.loc[valid_idx]
+            y = y.loc[valid_idx]
+        else:
+            print("Modo inferencia: No se encontró 'var_rpta_alt'")
+            X = df_clean.drop(columns=['id'])
+            y = None
+            valid_idx = df_clean.index  # usar todos los índices
 
         print("Detectando tipos de variables...")
-
-        # 3. Detectar tipos
         categorical_features = X.select_dtypes(include=['object', 'category']).columns.tolist()
         numeric_features = X.select_dtypes(include=['int64', 'float64']).columns.tolist()
 
-        print("Preprocesando variables...")
+        categorical_features = [col for col in categorical_features if X[col].nunique() <= self.max_cardinality]
 
-        # 4. Pipeline
-        numeric_transformer = Pipeline(steps=[('scaler', StandardScaler())])
-        categorical_transformer = Pipeline(steps=[(
-            'onehot', OneHotEncoder(handle_unknown='ignore', drop='first' if self.drop_first else None)
-        )])
+        print("Preprocesando variables...")
+        numeric_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='mean')),
+            ('scaler', StandardScaler())
+        ])
+        categorical_transformer = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('onehot', OneHotEncoder(handle_unknown='ignore', drop='first' if self.drop_first else None))
+        ])
         self.preprocessor = ColumnTransformer([
             ('num', numeric_transformer, numeric_features),
             ('cat', categorical_transformer, categorical_features)
         ])
 
         print("Transformando variables...")
-
-        # 5. Transformar
         X_preprocessed = self.preprocessor.fit_transform(X)
 
         print("Reconstruyendo nombres de columnas...")
-
-        # 6. Reconstruir nombres de columnas
         cat_names = self.preprocessor.named_transformers_['cat']['onehot'].get_feature_names_out(categorical_features)
         all_feature_names = numeric_features + list(cat_names)
 
@@ -108,13 +114,9 @@ class FeatureSelector:
         )
 
         print("Seleccionando variables...")
-
-        # 8. Variables seleccionadas desde features.csv
         self.selected_features = self.features_csv
 
         print("Ajustando columnas faltantes...")
-
-        # 9. Rellenar columnas faltantes con ceros
         for col in self.selected_features:
             if col not in X_preprocessed_df.columns:
                 X_preprocessed_df[col] = 0
@@ -122,15 +124,16 @@ class FeatureSelector:
                     print(f"[Padding] '{col}': columna faltante rellenada con ceros.")
 
         print("Ordenando columnas...")
-
-        # 10. Ordenar columnas según features.csv
         X_final = X_preprocessed_df[self.selected_features]
 
         print("Finalizando DataFrame...")
+        if tiene_y:
+            df_final = pd.concat([df_clean.loc[valid_idx, ['id']], y, X_final], axis=1)
+        else:
+            df_final = pd.concat([df_clean.loc[valid_idx, ['id']], X_final], axis=1)
 
-        # 11. Combinar
-        df_final = pd.concat([df[['id']], y, X_final], axis=1)
         return df_final
+
 
     def get_selected_features(self):
         return list(self.selected_features)

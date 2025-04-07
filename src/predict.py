@@ -10,7 +10,7 @@ class Predictor:
         self.modelo_nombre = modelo_nombre
         self.base_dir = base_dir or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         self.models_path = os.path.join(self.base_dir, "models")
-        self.tr_path = os.path.join(self.base_dir, "data", "raw", "prueba_op_base_pivot_var_rpta_alt_enmascarado_trtest.csv")
+        self.tr_path = os.path.join(self.base_dir, "data", "procesed", "df_train.csv")
         self.features_path = os.path.join(self.base_dir, "data", "procesed", "features.csv")
 
         self.modelo = None
@@ -40,28 +40,44 @@ class Predictor:
         if not os.path.exists(oot_path):
             raise FileNotFoundError(f"Archivo OOT no encontrado en: {oot_path}")
 
+        # Cargar datasets base
         df_oot = pd.read_csv(oot_path)
-        df_tr = pd.read_csv(self.tr_path)
+        df_hist_scores = pd.read_csv(os.path.join(self.base_dir, "data", "raw", "prueba_op_probabilidad_oblig_base_hist_enmascarado_completa.csv"))
+        df_clientes = pd.read_csv(os.path.join(self.base_dir, "data", "raw", "prueba_op_master_customer_data_enmascarado_completa.csv"))
+        df_pagos = pd.read_csv(os.path.join(self.base_dir, "data", "raw", "prueba_op_maestra_cuotas_pagos_mes_hist_enmascarado_completa.csv"))
         features = pd.read_csv(self.features_path)
 
-        print("🔗 Generando ID para merge y unificando datos...")
-        df_oot['id'] = df_oot['nit_enmascarado'].astype(str) + '#' + \
-                       df_oot['num_oblig_orig_enmascarado'].astype(str) + '#' + \
-                       df_oot['num_oblig_enmascarado'].astype(str)
+        print("🧹 Limpiando y formateando datos históricos...")
 
-        df_tr['id'] = df_tr['nit_enmascarado'].astype(str) + '#' + \
-                      df_tr['num_oblig_orig_enmascarado'].astype(str) + '#' + \
-                      df_tr['num_oblig_enmascarado'].astype(str)
+        # Ajuste fecha corte
+        df_pagos['fecha_corte'] = df_pagos['fecha_corte'].astype(str).str[:6].astype(int)
+        df_clientes['fecha_corte'] = df_clientes['year'].astype(str) + df_clientes['month'].astype(str).str.zfill(2)
 
-        df_tr = df_tr.drop_duplicates(subset='id', keep='first')
-        df = pd.merge(df_oot, df_tr, on='id', how='left')
+        # Drop duplicates manteniendo el más reciente
+        for df_name, df_data in [('Clientes', df_clientes), ('Pagos', df_pagos), ('Hist Scores', df_hist_scores)]:
+            df_data.sort_values(by='fecha_corte', ascending=False, inplace=True)
+            df_data.drop_duplicates(subset='nit_enmascarado', keep='first', inplace=True)
+            print(f"✔️ {df_name} limpio y único por nit.")
+
+        print("🔗 Realizando merges con información de cliente, pagos e histórico de scores...")
+
+        df_test = pd.merge(df_oot, df_clientes, on='nit_enmascarado', how='left')
+        df_test = pd.merge(df_test, df_pagos, on='nit_enmascarado', how='left')
+        df_test = pd.merge(df_test, df_hist_scores, on='nit_enmascarado', how='left')
+
+        df_test['id'] = df_test['nit_enmascarado'].astype(str) + '#' + \
+                        df_test['num_oblig_orig_enmascarado'].astype(str) + '#' + \
+                        df_test['num_oblig_enmascarado'].astype(str)
+
+        df_test.drop_duplicates(subset='id', keep='first', inplace=True)
 
         print("🧼 Aplicando FeatureSelector...")
-        limpieza = FeatureSelector(df, features)
+        limpieza = FeatureSelector(df_test, features)
         df_clean = limpieza.fit_transform()
 
         print("✅ Datos cargados y limpiados.")
         return df_clean
+
 
     def predecir(self, oot_path: str, guardar_csv: bool = False):
         print("🚀 Iniciando proceso de predicción...")
