@@ -335,7 +335,7 @@ A continuación se describen los pasos para levantar el sistema de predicción d
 
 1. **Clonar el repositorio**:
 
-*git clone https://github.com/juanguzman2/prueba_tecnica_MELI.git*
+*git clone https://github.com/juanguzman2/juan_guzman_prueba.git*
 
 2. **Crear un entorno virtual y activar**:
 
