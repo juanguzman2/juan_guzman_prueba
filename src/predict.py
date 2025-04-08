@@ -69,7 +69,7 @@ class Predictor:
                         df_test['num_oblig_orig_enmascarado'].astype(str) + '#' + \
                         df_test['num_oblig_enmascarado'].astype(str)
 
-        df_test.drop_duplicates(subset='id', keep='first', inplace=True)
+        
 
         print("🧼 Aplicando FeatureSelector...")
         limpieza = FeatureSelector(df_test, features)
